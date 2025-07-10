@@ -5,8 +5,8 @@ import Link from "next/link";
 import Image from "next/image";
 import { toast } from "sonner";
 import { auth } from "@/firebase/client";
-import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
+import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 
 import {
@@ -19,7 +19,6 @@ import { Button } from "@/components/ui/button";
 
 import { signIn, signUp } from "@/lib/actions/auth.action";
 import FormField from "./FormField";
-import {router} from "next/client";
 
 const authFormSchema = (type: FormType) => {
     return z.object({
@@ -31,7 +30,7 @@ const authFormSchema = (type: FormType) => {
 
 const AuthForm = ({ type }: { type: FormType }) => {
     const router = useRouter();
-    //
+
     const formSchema = authFormSchema(type);
     const form = useForm<z.infer<typeof formSchema>>({
         resolver: zodResolver(formSchema),
@@ -42,10 +41,10 @@ const AuthForm = ({ type }: { type: FormType }) => {
         },
     });
 
-  async  function onSubmit (values: z.infer<typeof formSchema>) {
+    const onSubmit = async (data: z.infer<typeof formSchema>) => {
         try {
             if (type === "sign-up") {
-                const { name, email, password } = values;
+                const { name, email, password } = data;
 
                 const userCredential = await createUserWithEmailAndPassword(
                     auth,
@@ -66,9 +65,9 @@ const AuthForm = ({ type }: { type: FormType }) => {
                 }
 
                 toast.success("Account created successfully. Please sign in.");
-                router.push("/sign-in")
+                router.push("/sign-in");
             } else {
-                const { email, password } = values;
+                const { email, password } = data;
 
                 const userCredential = await signInWithEmailAndPassword(
                     auth,

@@ -10,19 +10,19 @@ import { cn, getRandomInterviewCover } from "@/lib/utils";
 
 const InterviewCard = async ({
                                  interviewId,
-                                 userId,
+                                 // userId,
                                  role,
                                  type,
                                  techstack,
                                  createdAt,
                              }: InterviewCardProps) => {
-    const feedback =
-        userId && interviewId
-            ? await getFeedbackByInterviewId({
-                interviewId,
-                userId,
-            })
-            : null;
+    // const feedback =
+    //     userId && interviewId
+    //         ? await getFeedbackByInterviewId({
+    //             interviewId,
+    //             userId,
+    //         })
+    //         : null;
 
     const normalizedType = /mix/gi.test(type) ? "Mixed" : type;
 
