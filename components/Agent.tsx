@@ -1,24 +1,27 @@
+// Agent.tsx - AI Interviewer with Deepgram, OpenAI, and ElevenLabs
+
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
-import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 
-import { cn } from "@/lib/utils";
-import { vapi } from "@/lib/vapi.sdk";
-import { interviewer } from "@/constants";
 import { createFeedback } from "@/lib/actions/general.action";
-
-enum CallStatus {
-    INACTIVE = "INACTIVE",
-    CONNECTING = "CONNECTING",
-    ACTIVE = "ACTIVE",
-    FINISHED = "FINISHED",
-}
+import { transcribeAudio } from "@/app/api/speech/deepgram";
+import { getAssistantResponse } from "@/app/api/speech/openai";
+import { playTextWithElevenLabs } from "@/app/api/speech/elevenlab";
 
 interface SavedMessage {
     role: "user" | "system" | "assistant";
     content: string;
+}
+
+enum CallStatus {
+    INACTIVE = "INACTIVE",
+    ASKING = "ASKING",
+    RECORDING = "RECORDING",
+    PROCESSING = "PROCESSING",
+    FINISHED = "FINISHED",
 }
 
 const Agent = ({
@@ -27,69 +30,82 @@ const Agent = ({
                    interviewId,
                    feedbackId,
                    type,
-                   questions,
+                   questions = [],
                }: AgentProps) => {
     const router = useRouter();
     const [callStatus, setCallStatus] = useState<CallStatus>(CallStatus.INACTIVE);
     const [messages, setMessages] = useState<SavedMessage[]>([]);
-    const [isSpeaking, setIsSpeaking] = useState(false);
     const [lastMessage, setLastMessage] = useState<string>("");
 
-    useEffect(() => {
-        const onCallStart = () => {
-            setCallStatus(CallStatus.ACTIVE);
+    const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+    const audioChunks = useRef<Blob[]>([]);
+    const [currentQuestionIndex, setCurrentQuestionIndex] = useState<number>(0);
+
+    const askQuestion = async (question: string) => {
+        setCallStatus(CallStatus.ASKING);
+        setLastMessage(question);
+        const assistantMessage: SavedMessage = {
+            role: "assistant",
+            content: question,
+        };
+        setMessages((prev) => [...prev, assistantMessage]);
+        await playTextWithElevenLabs(question);
+        startRecording();
+    };
+
+    const startRecording = async () => {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorderRef.current = new MediaRecorder(stream);
+        audioChunks.current = [];
+
+        mediaRecorderRef.current.ondataavailable = (event) => {
+            audioChunks.current.push(event.data);
         };
 
-        const onCallEnd = () => {
-            setCallStatus(CallStatus.FINISHED);
+        mediaRecorderRef.current.onstop = async () => {
+            setCallStatus(CallStatus.PROCESSING);
+            const audioBlob = new Blob(audioChunks.current, { type: "audio/webm" });
+            const buffer = await audioBlob.arrayBuffer();
+
+            const transcript = await transcribeAudio(Buffer.from(buffer));
+            const userMessage: SavedMessage = { role: "user", content: transcript };
+            setMessages((prev) => [...prev, userMessage]);
+
+            // Get GPT response to user's answer
+            const assistantReply = await getAssistantResponse(transcript);
+            const assistantResponseMessage: SavedMessage = {
+                role: "assistant",
+                content: assistantReply,
+            };
+            setMessages((prev) => [...prev, assistantResponseMessage]);
+            setLastMessage(assistantReply);
+
+            await playTextWithElevenLabs(assistantReply);
+
+            // Move to next question
+            setTimeout(() => {
+                if (currentQuestionIndex < questions.length - 1) {
+                    setCurrentQuestionIndex((prev) => prev + 1);
+                } else {
+                    setCallStatus(CallStatus.FINISHED);
+                }
+            }, 1000);
         };
 
-        const onMessage = (message: Message) => {
-            if (message.type === "transcript" && message.transcriptType === "final") {
-                const newMessage = { role: message.role, content: message.transcript };
-                setMessages((prev) => [...prev, newMessage]);
-            }
-        };
+        mediaRecorderRef.current.start();
+        setCallStatus(CallStatus.RECORDING);
+    };
 
-        const onSpeechStart = () => {
-            console.log("speech start");
-            setIsSpeaking(true);
-        };
+    const stopRecording = () => {
+        mediaRecorderRef.current?.stop();
+    };
 
-        const onSpeechEnd = () => {
-            console.log("speech end");
-            setIsSpeaking(false);
-        };
+    const handleEnd = async () => {
+        setCallStatus(CallStatus.FINISHED);
 
-        const onError = (error: Error) => {
-            console.log("Error:", error);
-        };
-
-        vapi.on("call-start", onCallStart);
-        vapi.on("call-end", onCallEnd);
-        vapi.on("message", onMessage);
-        vapi.on("speech-start", onSpeechStart);
-        vapi.on("speech-end", onSpeechEnd);
-        vapi.on("error", onError);
-
-        return () => {
-            vapi.off("call-start", onCallStart);
-            vapi.off("call-end", onCallEnd);
-            vapi.off("message", onMessage);
-            vapi.off("speech-start", onSpeechStart);
-            vapi.off("speech-end", onSpeechEnd);
-            vapi.off("error", onError);
-        };
-    }, []);
-
-    useEffect(() => {
-        if (messages.length > 0) {
-            setLastMessage(messages[messages.length - 1].content);
-        }
-
-        const handleGenerateFeedback = async (messages: SavedMessage[]) => {
-            console.log("handleGenerateFeedback");
-
+        if (type === "generate") {
+            router.push("/");
+        } else {
             const { success, feedbackId: id } = await createFeedback({
                 interviewId: interviewId!,
                 userId: userId!,
@@ -100,119 +116,70 @@ const Agent = ({
             if (success && id) {
                 router.push(`/interview/${interviewId}/feedback`);
             } else {
-                console.log("Error saving feedback");
                 router.push("/");
             }
-        };
-
-        if (callStatus === CallStatus.FINISHED) {
-            if (type === "generate") {
-                router.push("/");
-            } else {
-                handleGenerateFeedback(messages);
-            }
-        }
-    }, [messages, callStatus, feedbackId, interviewId, router, type, userId]);
-
-    const handleCall = async () => {
-        setCallStatus(CallStatus.CONNECTING);
-
-        if (type === "generate") {
-            await vapi.start(process.env.NEXT_PUBLIC_VAPI_WORKFLOW_ID!, {
-                variableValues: {
-                    username: userName,
-                    userid: userId,
-                },
-            });
-        } else {
-            let formattedQuestions = "";
-            if (questions) {
-                formattedQuestions = questions
-                    .map((question) => `- ${question}`)
-                    .join("\n");
-            }
-
-            await vapi.start(interviewer, {
-                variableValues: {
-                    questions: formattedQuestions,
-                },
-            });
         }
     };
 
-    const handleDisconnect = () => {
-        setCallStatus(CallStatus.FINISHED);
-        vapi.stop();
-    };
+    useEffect(() => {
+        if (callStatus === CallStatus.INACTIVE && questions.length > 0) {
+            askQuestion(questions[0]);
+        }
+    }, []);
+
+    useEffect(() => {
+        if (currentQuestionIndex > 0 && currentQuestionIndex < questions.length) {
+            askQuestion(questions[currentQuestionIndex]);
+        }
+    }, [currentQuestionIndex]);
 
     return (
         <>
             <div className="call-view">
-                {/* AI Interviewer Card */}
                 <div className="card-interviewer">
                     <div className="avatar">
                         <Image
                             src="/ai-avatar.png"
-                            alt="profile-image"
+                            alt="interviewer"
                             width={65}
                             height={54}
                             className="object-cover"
                         />
-                        {isSpeaking && <span className="animate-speak" />}
                     </div>
                     <h3>AI Interviewer</h3>
                 </div>
 
-                {/* User Profile Card */}
                 <div className="card-border">
                     <div className="card-content">
                         <Image
                             src="/user-avatar.png"
-                            alt="profile-image"
-                            width={539}
-                            height={539}
-                            className="rounded-full object-cover size-[120px]"
+                            alt="user profile"
+                            width={120}
+                            height={120}
+                            className="rounded-full object-cover"
                         />
                         <h3>{userName}</h3>
                     </div>
                 </div>
             </div>
 
-            {messages.length > 0 && (
+            {lastMessage && (
                 <div className="transcript-border">
                     <div className="transcript">
-                        <p
-                            key={lastMessage}
-                            className={cn(
-                                "transition-opacity duration-500 opacity-0",
-                                "animate-fadeIn opacity-100"
-                            )}
-                        >
-                            {lastMessage}
-                        </p>
+                        <p className="animate-fadeIn">{lastMessage}</p>
                     </div>
                 </div>
             )}
 
-            <div className="w-full flex justify-center">
-                {callStatus !== "ACTIVE" ? (
-                    <button className="relative btn-call" onClick={() => handleCall()}>
-            <span
-                className={cn(
-                    "absolute animate-ping rounded-full opacity-75",
-                    callStatus !== "CONNECTING" && "hidden"
-                )}
-            />
-
-                        <span className="relative">
-              {callStatus === "INACTIVE" || callStatus === "FINISHED"
-                  ? "Call"
-                  : ". . ."}
-            </span>
+            <div className="w-full flex justify-center mt-4 gap-4">
+                {callStatus === CallStatus.RECORDING && (
+                    <button className="btn-disconnect" onClick={stopRecording}>
+                        Stop
                     </button>
-                ) : (
-                    <button className="btn-disconnect" onClick={() => handleDisconnect()}>
-                        End
+                )}
+                {callStatus === CallStatus.FINISHED && (
+                    <button className="btn-disconnect" onClick={handleEnd}>
+                        End Session
                     </button>
                 )}
             </div>

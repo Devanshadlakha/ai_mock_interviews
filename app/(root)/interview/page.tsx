@@ -1,17 +1,18 @@
 import Agent from "@/components/Agent";
-import { getCurrentUser } from "@/lib/actions/auth.action";
+import { getUserFromRequest } from "@/lib/auth/firebase"; // ✅ new import
 
 const Page = async () => {
-    const user = await getCurrentUser();
+    const user = await getUserFromRequest();
 
     return (
         <>
             <h3>Interview generation</h3>
 
             <Agent
-                userName={user?.name!}
-                userId={user?.id}
-                profileImage={user?.profileURL}
+                userName={user?.name ?? "Candidate"}
+                userId={user?.uid}
+                profileImage={user?.picture}
+
                 type="generate"
             />
         </>
