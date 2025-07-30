@@ -4,7 +4,7 @@ import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import InterviewCard from "@/components/InterviewCard";
 
-import { getUserFromRequest } from "@/lib/auth/firebase"; // ✅ Updated import
+import { getUserFromRequest } from "@/lib/auth/firebase";
 import {
     getInterviewsByUserId,
     getLatestInterviews,
@@ -13,13 +13,27 @@ import {
 async function Home() {
     const user = await getUserFromRequest();
 
-    const [userInterviews, allInterview] = await Promise.all([
-        getInterviewsByUserId(user?.uid!),
-        getLatestInterviews({ userId: user?.uid! }),
+    if (!user || !user.uid) {
+        return (
+            <section className="flex justify-center mt-10">
+                <p>User not authenticated.</p>
+            </section>
+        );
+    }
+
+    const userId = user.uid;
+
+    // Ensure fallback to empty arrays
+    const [userInterviewsRaw, allInterviewRaw] = await Promise.all([
+        getInterviewsByUserId(userId),
+        getLatestInterviews({ userId }),
     ]);
 
-    const hasPastInterviews = userInterviews?.length! > 0;
-    const hasUpcomingInterviews = allInterview?.length! > 0;
+    const userInterviews = userInterviewsRaw ?? [];
+    const allInterview = allInterviewRaw ?? [];
+
+    const hasPastInterviews = userInterviews.length > 0;
+    const hasUpcomingInterviews = allInterview.length > 0;
 
     return (
         <>
@@ -49,10 +63,10 @@ async function Home() {
 
                 <div className="interviews-section">
                     {hasPastInterviews ? (
-                        userInterviews?.map((interview) => (
+                        userInterviews.map((interview) => (
                             <InterviewCard
                                 key={interview.id}
-                                userId={user?.uid}
+                                userId={userId}
                                 interviewId={interview.id}
                                 role={interview.role}
                                 type={interview.type}
@@ -71,10 +85,10 @@ async function Home() {
 
                 <div className="interviews-section">
                     {hasUpcomingInterviews ? (
-                        allInterview?.map((interview) => (
+                        allInterview.map((interview) => (
                             <InterviewCard
                                 key={interview.id}
-                                userId={user?.uid}
+                                userId={userId}
                                 interviewId={interview.id}
                                 role={interview.role}
                                 type={interview.type}

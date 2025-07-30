@@ -1,29 +1,36 @@
-// /app/api/speech/deepgram.ts
+import { createClient } from "@deepgram/sdk";
 
-import { Deepgram } from "@deepgram/sdk";
-
-const deepgram = new Deepgram(process.env.DEEPGRAM_API_KEY!);
+const deepgram = createClient(process.env.DEEPGRAM_API_KEY!);
 
 export async function transcribeAudio(audioBuffer: Buffer): Promise<string> {
     try {
-        const response = await deepgram.transcription.preRecorded(
-            {
-                buffer: audioBuffer,
-                mimetype: "audio/webm",
-            },
+        const { result, error } = await deepgram.listen.prerecorded.transcribeFile(
+            audioBuffer,
             {
                 model: "nova-2",
                 language: "en-US",
+                smart_format: true,
             }
         );
 
+        if (error || !result) {
+            console.error("Deepgram transcription error:", error || "Empty result");
+            return "Unable to transcribe audio.";
+        }
+
+        // Type assertion to help TypeScript understand the shape
+        const transcription = result as any;
+
         const transcript =
-            response.results.channels[0].alternatives[0].transcript;
+            transcription.results?.channels?.[0]?.alternatives?.[0]?.transcript;
+
+        if (!transcript) {
+            return "No transcription found.";
+        }
 
         return transcript;
-    } catch (error) {
-        console.error("Deepgram transcription error:", error);
+    } catch (err) {
+        console.error("Transcription failed:", err);
         return "Unable to transcribe audio.";
     }
 }
-

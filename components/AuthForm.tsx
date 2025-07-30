@@ -19,6 +19,9 @@ import { Form } from "@/components/ui/form";
 import { Button } from "@/components/ui/button";
 import FormField from "./FormField";
 
+// ✅ Add this:
+type FormType = "sign-in" | "sign-up";
+
 const authFormSchema = (type: FormType) => {
     return z.object({
         name: type === "sign-up" ? z.string().min(3) : z.string().optional(),

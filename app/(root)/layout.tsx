@@ -1,9 +1,10 @@
+// app/(auth)/layout.tsx
 import Link from "next/link";
 import Image from "next/image";
 import { ReactNode } from "react";
 import { redirect } from "next/navigation";
 
-import { isAuthenticated } from "@/lib/actions/auth.action";
+import { isAuthenticated } from "@/lib/auth/server"; // ✅ Updated import
 
 const Layout = async ({ children }: { children: ReactNode }) => {
     const isUserAuthenticated = await isAuthenticated();
@@ -17,7 +18,6 @@ const Layout = async ({ children }: { children: ReactNode }) => {
                     <h2 className="text-primary-100">PrepWise</h2>
                 </Link>
             </nav>
-
             {children}
         </div>
     );

@@ -6,15 +6,66 @@ import { google } from "@ai-sdk/google";
 import { db } from "@/firebase/admin";
 import { feedbackSchema } from "@/constants";
 
+// ✅ Types
+export type Interview = {
+    id: string;
+    userId: string;
+    role: string;
+    type: string;
+    techstack: string[];
+    level: string;
+    questions: string[];
+    finalized: boolean;
+    createdAt: string;
+};
+
+export type CategoryScore = {
+    name:
+        | "Communication Skills"
+        | "Technical Knowledge"
+        | "Problem Solving"
+        | "Cultural Fit"
+        | "Confidence and Clarity";
+    score: number;
+    comment: string;
+};
+
+export type Feedback = {
+    id?: string;
+    interviewId: string;
+    userId: string;
+    totalScore: number;
+    categoryScores: CategoryScore[];
+    strengths: string[];
+    areasForImprovement: string[];
+    finalAssessment: string;
+    createdAt: string;
+};
+
+export type CreateFeedbackParams = {
+    interviewId: string;
+    userId: string;
+    transcript: { role: string; content: string }[];
+    feedbackId?: string;
+};
+
+export type GetFeedbackByInterviewIdParams = {
+    interviewId: string;
+    userId: string;
+};
+
+export type GetLatestInterviewsParams = {
+    userId: string;
+    limit?: number;
+};
+
+// ✅ createFeedback
 export async function createFeedback(params: CreateFeedbackParams) {
     const { interviewId, userId, transcript, feedbackId } = params;
 
     try {
         const formattedTranscript = transcript
-            .map(
-                (sentence: { role: string; content: string }) =>
-                    `- ${sentence.role}: ${sentence.content}\n`
-            )
+            .map((sentence) => `- ${sentence.role}: ${sentence.content}\n`)
             .join("");
 
         const { object } = await generateObject({
@@ -23,24 +74,23 @@ export async function createFeedback(params: CreateFeedbackParams) {
             }),
             schema: feedbackSchema,
             prompt: `
-        You are an AI interviewer analyzing a mock interview. Your task is to evaluate the candidate based on structured categories. Be thorough and detailed in your analysis. Don't be lenient with the candidate. If there are mistakes or areas for improvement, point them out.
-        Transcript:
-        ${formattedTranscript}
+You are an AI interviewer analyzing a mock interview. Your task is to evaluate the candidate based on structured categories. Be thorough and detailed in your analysis. Don't be lenient with the candidate. If there are mistakes or areas for improvement, point them out.
+Transcript:
+${formattedTranscript}
 
-        Please score the candidate from 0 to 100 in the following areas. Do not add categories other than the ones provided:
-        - **Communication Skills**: Clarity, articulation, structured responses.
-        - **Technical Knowledge**: Understanding of key concepts for the role.
-        - **Problem-Solving**: Ability to analyze problems and propose solutions.
-        - **Cultural & Role Fit**: Alignment with company values and job role.
-        - **Confidence & Clarity**: Confidence in responses, engagement, and clarity.
-        `,
-            system:
-                "You are a professional interviewer analyzing a mock interview. Your task is to evaluate the candidate based on structured categories",
+Please score the candidate from 0 to 100 in the following areas:
+- Communication Skills
+- Technical Knowledge
+- Problem-Solving
+- Cultural & Role Fit
+- Confidence & Clarity
+`,
+            system: `You are a professional interviewer analyzing a mock interview.`,
         });
 
-        const feedback = {
-            interviewId: interviewId,
-            userId: userId,
+        const feedback: Feedback = {
+            interviewId,
+            userId,
             totalScore: object.totalScore,
             categoryScores: object.categoryScores,
             strengths: object.strengths,
@@ -49,13 +99,9 @@ export async function createFeedback(params: CreateFeedbackParams) {
             createdAt: new Date().toISOString(),
         };
 
-        let feedbackRef;
-
-        if (feedbackId) {
-            feedbackRef = db.collection("feedback").doc(feedbackId);
-        } else {
-            feedbackRef = db.collection("feedback").doc();
-        }
+        const feedbackRef = feedbackId
+            ? db.collection("feedback").doc(feedbackId)
+            : db.collection("feedback").doc();
 
         await feedbackRef.set(feedback);
 
@@ -66,12 +112,15 @@ export async function createFeedback(params: CreateFeedbackParams) {
     }
 }
 
+// ✅ getInterviewById
 export async function getInterviewById(id: string): Promise<Interview | null> {
-    const interview = await db.collection("interviews").doc(id).get();
+    const interviewDoc = await db.collection("interviews").doc(id).get();
+    if (!interviewDoc.exists) return null;
 
-    return interview.data() as Interview | null;
+    return { id: interviewDoc.id, ...interviewDoc.data() } as Interview;
 }
 
+// ✅ getFeedbackByInterviewId
 export async function getFeedbackByInterviewId(
     params: GetFeedbackByInterviewIdParams
 ): Promise<Feedback | null> {
@@ -90,35 +139,37 @@ export async function getFeedbackByInterviewId(
     return { id: feedbackDoc.id, ...feedbackDoc.data() } as Feedback;
 }
 
+// ✅ getLatestInterviews
 export async function getLatestInterviews(
     params: GetLatestInterviewsParams
 ): Promise<Interview[] | null> {
     const { userId, limit = 20 } = params;
 
-    const interviews = await db
+    const querySnapshot = await db
         .collection("interviews")
-        .orderBy("createdAt", "desc")
         .where("finalized", "==", true)
         .where("userId", "!=", userId)
+        .orderBy("createdAt", "desc")
         .limit(limit)
         .get();
 
-    return interviews.docs.map((doc) => ({
+    return querySnapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
     })) as Interview[];
 }
 
+// ✅ getInterviewsByUserId
 export async function getInterviewsByUserId(
     userId: string
 ): Promise<Interview[] | null> {
-    const interviews = await db
+    const querySnapshot = await db
         .collection("interviews")
         .where("userId", "==", userId)
         .orderBy("createdAt", "desc")
         .get();
 
-    return interviews.docs.map((doc) => ({
+    return querySnapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
     })) as Interview[];

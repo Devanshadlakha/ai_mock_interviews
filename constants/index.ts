@@ -141,6 +141,19 @@ export const interviewCovers = [
   "/yahoo.png",
 ];
 
+// ✅ Interview type definition
+export type Interview = {
+  id: string;
+  userId: string;
+  role: string;
+  type: string;
+  techstack: string[];
+  level: string;
+  questions: string[];
+  finalized: boolean;
+  createdAt: string;
+};
+
 // 🧪 Sample interview data
 export const dummyInterviews: Interview[] = [
   {

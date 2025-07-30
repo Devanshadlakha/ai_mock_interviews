@@ -8,6 +8,19 @@ import DisplayTechIcons from "./DisplayTechIcons";
 import { cn, getRandomInterviewCover } from "@/lib/utils";
 import { getFeedbackByInterviewId } from "@/lib/actions/general.action";
 
+// ✅ Define the props type
+type InterviewCardProps = {
+    interviewId: string;
+    userId?: string;
+    role: string;
+    type: string;
+    techstack: string[];
+    createdAt?: string | number | Date;
+};
+
+// ✅ Optional: Define the known types for interview types
+type InterviewType = "Technical" | "Behavioral" | "Mixed";
+
 const InterviewCard = async ({
                                  interviewId,
                                  userId,
@@ -24,14 +37,16 @@ const InterviewCard = async ({
             })
             : null;
 
-    const normalizedType = /mix/gi.test(type) ? "Mixed" : type;
+    const normalizedType: InterviewType = /mix/gi.test(type)
+        ? "Mixed"
+        : (type as InterviewType);
 
     const badgeColor =
         {
             Behavioral: "bg-light-400",
             Mixed: "bg-light-600",
             Technical: "bg-light-800",
-        }[normalizedType] || "bg-light-600";
+        }[normalizedType];
 
     const formattedDate = dayjs(
         feedback?.createdAt || createdAt || Date.now()
@@ -77,7 +92,7 @@ const InterviewCard = async ({
 
                         <div className="flex flex-row gap-2 items-center">
                             <Image src="/star.svg" width={22} height={22} alt="star" />
-                            <p>{feedback?.totalScore || "---"}/100</p>
+                            <p>{feedback?.totalScore ?? "---"}/100</p>
                         </div>
                     </div>
 

@@ -5,11 +5,20 @@
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-
 import { createFeedback } from "@/lib/actions/general.action";
 import { transcribeAudio } from "@/app/api/speech/deepgram";
 import { getAssistantResponse } from "@/app/api/speech/openai";
 import { playTextWithElevenLabs } from "@/app/api/speech/elevenlab";
+
+interface AgentProps {
+    userName: string;
+    userId: string;
+    profileImage?: string; // ✅ added to fix the error
+    interviewId?: string;
+    feedbackId?: string;
+    type: "generate" | "evaluate";
+    questions?: string[];
+}
 
 interface SavedMessage {
     role: "user" | "system" | "assistant";
@@ -27,6 +36,7 @@ enum CallStatus {
 const Agent = ({
                    userName,
                    userId,
+                   profileImage,
                    interviewId,
                    feedbackId,
                    type,
@@ -71,7 +81,6 @@ const Agent = ({
             const userMessage: SavedMessage = { role: "user", content: transcript };
             setMessages((prev) => [...prev, userMessage]);
 
-            // Get GPT response to user's answer
             const assistantReply = await getAssistantResponse(transcript);
             const assistantResponseMessage: SavedMessage = {
                 role: "assistant",
@@ -82,7 +91,6 @@ const Agent = ({
 
             await playTextWithElevenLabs(assistantReply);
 
-            // Move to next question
             setTimeout(() => {
                 if (currentQuestionIndex < questions.length - 1) {
                     setCurrentQuestionIndex((prev) => prev + 1);
@@ -152,7 +160,7 @@ const Agent = ({
                 <div className="card-border">
                     <div className="card-content">
                         <Image
-                            src="/user-avatar.png"
+                            src={profileImage || "/user-avatar.png"} // ✅ fallback if not provided
                             alt="user profile"
                             width={120}
                             height={120}
